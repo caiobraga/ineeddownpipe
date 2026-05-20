@@ -1,0 +1,15 @@
+{
+  "name": "ineeddownpipe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BMW downpipe price comparison for the US market",
+  "scripts": {
+    "dev": "concurrently -n back,front -c blue,green \"npm run dev --prefix ineeddownpipe-back\" \"npm run dev --prefix ineeddownpipe-front\"",
+    "install:all": "npm install && npm install --prefix ineeddownpipe-back && npm install --prefix ineeddownpipe-front",
+    "build": "npm run build --prefix ineeddownpipe-front",
+    "refresh": "npm run refresh --prefix ineeddownpipe-back"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

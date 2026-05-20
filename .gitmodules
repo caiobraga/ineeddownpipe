@@ -1,0 +1,6 @@
+[submodule "ineeddownpipe-back"]
+	path = ineeddownpipe-back
+	url = https://github.com/caiobraga/ineeddownpipe-back.git
+[submodule "ineeddownpipe-front"]
+	path = ineeddownpipe-front
+	url = https://github.com/caiobraga/ineeddownpipe-front.git
