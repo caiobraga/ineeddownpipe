@@ -85,6 +85,7 @@ ECR_REPOSITORY=ineeddownpipe-api
 ECS_CLUSTER=your-ecs-cluster-name
 ECS_SERVICE=your-ecs-service-name
 ECS_CONTAINER_NAME=ineeddownpipe-api
+ECS_DESIRED_COUNT=1
 ```
 
 ### Frontend workflow
