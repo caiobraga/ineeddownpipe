@@ -15,6 +15,9 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
   VITE_API_URL: ${{ vars.VITE_API_URL }}
@@ -37,7 +40,13 @@ jobs:
 
       - name: Validate required configuration
         run: |
-          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" || (echo "Missing secret AWS_ROLE_TO_ASSUME" && exit 1)
+          if [ -z "$AWS_ROLE_TO_ASSUME" ] && { [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; }; then
+            echo "Missing AWS credentials."
+            echo "Set either:"
+            echo "  - AWS_ROLE_TO_ASSUME for GitHub OIDC (recommended), or"
+            echo "  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for IAM user access keys."
+            exit 1
+          fi
           test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
           test -n "$FRONTEND_S3_BUCKET" || (echo "Missing repository variable FRONTEND_S3_BUCKET" && exit 1)
           test -n "$VITE_API_URL" || (echo "Missing repository variable VITE_API_URL" && exit 1)
@@ -56,10 +65,19 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials with OIDC
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials with access keys
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Sync dist to S3

@@ -15,6 +15,9 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
   ECS_SERVICE: ${{ vars.ECS_SERVICE }}
@@ -37,17 +40,32 @@ jobs:
 
       - name: Validate required configuration
         run: |
-          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" || (echo "Missing secret AWS_ROLE_TO_ASSUME" && exit 1)
+          if [ -z "$AWS_ROLE_TO_ASSUME" ] && { [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; }; then
+            echo "Missing AWS credentials."
+            echo "Set either:"
+            echo "  - AWS_ROLE_TO_ASSUME for GitHub OIDC (recommended), or"
+            echo "  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for IAM user access keys."
+            exit 1
+          fi
           test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
           test -n "$ECR_REPOSITORY" || (echo "Missing repository variable ECR_REPOSITORY" && exit 1)
           test -n "$ECS_CLUSTER" || (echo "Missing repository variable ECS_CLUSTER" && exit 1)
           test -n "$ECS_SERVICE" || (echo "Missing repository variable ECS_SERVICE" && exit 1)
           test -n "$ECS_CONTAINER_NAME" || (echo "Missing repository variable ECS_CONTAINER_NAME" && exit 1)
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials with OIDC
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials with access keys
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
