@@ -36,26 +36,20 @@ The container name in the ECS task definition must match GitHub variable `ECS_CO
 
 ## 2. GitHub Repository Secrets
 
-The workflows support two AWS authentication modes.
-
-### Option A: GitHub OIDC, recommended
-
-Create one GitHub Actions IAM role in AWS and add its ARN as a repository secret:
-
-```text
-AWS_ROLE_TO_ASSUME=arn:aws:iam::<account-id>:role/<role-name>
-```
-
-### Option B: IAM user access keys
-
-If you prefer the simpler access-key setup, add these repository secrets instead:
+The workflows use IAM user access-key secrets for AWS authentication:
 
 ```text
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
-The workflows validate that either `AWS_ROLE_TO_ASSUME` is present, or both access-key secrets are present.
+If you are using temporary AWS credentials, also add:
+
+```text
+AWS_SESSION_TOKEN=...
+```
+
+The workflows validate that `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present.
 
 If this parent repository keeps `ineeddownpipe-back` and `ineeddownpipe-front` as private submodules, also create a fine-grained GitHub token with read-only `Contents` access to both submodule repositories and add it as:
 
@@ -64,31 +58,6 @@ GH_SUBMODULE_TOKEN=github_pat_...
 ```
 
 Without this token, `actions/checkout` can fail with `Repository not found` or `403` while cloning submodules, even when the repositories exist and you can access them locally.
-
-The role trust policy should allow your GitHub repository to assume it:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:<github-org-or-user>/<repo-name>:ref:refs/heads/main"
-        }
-      }
-    }
-  ]
-}
-```
 
 ## 3. GitHub Repository Variables
 

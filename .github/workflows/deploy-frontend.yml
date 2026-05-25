@@ -11,13 +11,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
   FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
   VITE_API_URL: ${{ vars.VITE_API_URL }}
@@ -40,11 +39,10 @@ jobs:
 
       - name: Validate required configuration
         run: |
-          if [ -z "$AWS_ROLE_TO_ASSUME" ] && { [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; }; then
-            echo "Missing AWS credentials."
-            echo "Set either:"
-            echo "  - AWS_ROLE_TO_ASSUME for GitHub OIDC (recommended), or"
-            echo "  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for IAM user access keys."
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "Missing AWS access-key credentials."
+            echo "Set GitHub repository secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+            echo "If you are using temporary AWS credentials, also set AWS_SESSION_TOKEN."
             exit 1
           fi
           test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
@@ -65,19 +63,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Configure AWS credentials with OIDC
-        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Configure AWS credentials with access keys
-        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ env.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Sync dist to S3
