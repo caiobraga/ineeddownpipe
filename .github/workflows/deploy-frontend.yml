@@ -11,9 +11,11 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
@@ -39,9 +41,9 @@ jobs:
 
       - name: Validate required configuration
         run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-            echo "Missing AWS access-key credentials."
-            echo "Set GitHub repository secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+          if [ -z "$AWS_ROLE_ARN" ] && { [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; }; then
+            echo "Missing AWS credentials."
+            echo "Set either GitHub variable AWS_ROLE_ARN (same as OrigemLab), or secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
             echo "If you are using temporary AWS credentials, also set AWS_SESSION_TOKEN."
             exit 1
           fi
@@ -63,7 +65,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials with OIDC role
+        if: ${{ env.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials with access keys
+        if: ${{ env.AWS_ROLE_ARN == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}

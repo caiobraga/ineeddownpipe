@@ -36,7 +36,15 @@ The container name in the ECS task definition must match GitHub variable `ECS_CO
 
 ## 2. GitHub Repository Secrets
 
-The workflows use IAM user access-key secrets for AWS authentication:
+The workflows support the same OIDC variable name used by OrigemLab:
+
+```text
+AWS_ROLE_ARN=arn:aws:iam::<account-id>:role/<role-name>
+```
+
+Set `AWS_ROLE_ARN` under GitHub repository **Variables**.
+
+If you prefer IAM user access keys instead, add these repository **Secrets**:
 
 ```text
 AWS_ACCESS_KEY_ID=...
@@ -49,7 +57,7 @@ If you are using temporary AWS credentials, also add:
 AWS_SESSION_TOKEN=...
 ```
 
-The workflows validate that `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present.
+The workflows validate that either `AWS_ROLE_ARN` is present, or both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present.
 
 If this parent repository keeps `ineeddownpipe-back` and `ineeddownpipe-front` as private submodules, also create a fine-grained GitHub token with read-only `Contents` access to both submodule repositories and add it as:
 
@@ -67,6 +75,7 @@ Set these under GitHub repo `Settings -> Secrets and variables -> Actions -> Var
 
 ```text
 AWS_REGION=us-east-1
+AWS_ROLE_ARN=arn:aws:iam::<account-id>:role/<role-name>
 ```
 
 ### Backend workflow
