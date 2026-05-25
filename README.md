@@ -61,3 +61,5 @@ GitHub Actions workflows are available in `.github/workflows/`:
 - `deploy-frontend.yml`: builds `ineeddownpipe-front`, syncs `dist/` to S3, and optionally invalidates CloudFront.
 
 Setup guide: [`infra/aws/github-actions.md`](infra/aws/github-actions.md).
+
+Because `ineeddownpipe-back` and `ineeddownpipe-front` are git submodules, private submodule repositories require the GitHub secret `GH_SUBMODULE_TOKEN` for Actions checkout.
