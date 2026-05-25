@@ -1,6 +1,6 @@
 # iNeedDownpipe (local workspace)
 
-This folder groups **two separate GitHub repositories**, each with its own AWS CodeBuild pipeline:
+This folder groups **two separate GitHub repositories**, each deployable through GitHub Actions or AWS CodeBuild:
 
 | Repo folder | GitHub (example) | AWS deploy |
 |-------------|------------------|------------|
@@ -52,3 +52,12 @@ npm run dev
 4. Deploy **front**.
 
 See each subfolder `README.md` for AWS details.
+
+## GitHub Actions deploy
+
+GitHub Actions workflows are available in `.github/workflows/`:
+
+- `deploy-backend.yml`: builds `ineeddownpipe-back/Dockerfile`, pushes to ECR, registers a new ECS task definition revision, and updates the ECS service.
+- `deploy-frontend.yml`: builds `ineeddownpipe-front`, syncs `dist/` to S3, and optionally invalidates CloudFront.
+
+Setup guide: [`infra/aws/github-actions.md`](infra/aws/github-actions.md).

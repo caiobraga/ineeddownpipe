@@ -1,0 +1,128 @@
+name: Deploy backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ineeddownpipe-back/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
+jobs:
+  deploy:
+    name: Build image and update ECS
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ineeddownpipe-back
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate required configuration
+        run: |
+          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" || (echo "Missing secret AWS_ROLE_TO_ASSUME" && exit 1)
+          test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
+          test -n "$ECR_REPOSITORY" || (echo "Missing repository variable ECR_REPOSITORY" && exit 1)
+          test -n "$ECS_CLUSTER" || (echo "Missing repository variable ECS_CLUSTER" && exit 1)
+          test -n "$ECS_SERVICE" || (echo "Missing repository variable ECS_SERVICE" && exit 1)
+          test -n "$ECS_CONTAINER_NAME" || (echo "Missing repository variable ECS_CONTAINER_NAME" && exit 1)
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch current ECS task definition
+        run: |
+          TASK_DEFINITION_ARN="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+
+          test -n "$TASK_DEFINITION_ARN" && test "$TASK_DEFINITION_ARN" != "None" || {
+            echo "Could not find task definition for service $ECS_SERVICE"
+            exit 1
+          }
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Render new task definition
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+        run: |
+          jq \
+            --arg IMAGE_URI "$IMAGE_URI" \
+            --arg CONTAINER_NAME "$ECS_CONTAINER_NAME" \
+            'del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy
+            )
+            | .containerDefinitions = (
+              .containerDefinitions
+              | map(if .name == $CONTAINER_NAME then .image = $IMAGE_URI else . end)
+            )' \
+            task-definition.json > task-definition-rendered.json
+
+          UPDATED_COUNT="$(jq --arg CONTAINER_NAME "$ECS_CONTAINER_NAME" '[.containerDefinitions[] | select(.name == $CONTAINER_NAME)] | length' task-definition-rendered.json)"
+          test "$UPDATED_COUNT" = "1" || {
+            echo "Container $ECS_CONTAINER_NAME not found in task definition"
+            exit 1
+          }
+
+      - name: Register task definition and update service
+        run: |
+          NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-rendered.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TASK_DEFINITION_ARN" \
+            --force-new-deployment
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"

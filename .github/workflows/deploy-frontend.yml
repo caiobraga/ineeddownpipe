@@ -1,0 +1,90 @@
+name: Deploy frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ineeddownpipe-front/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  VITE_API_URL: ${{ vars.VITE_API_URL }}
+  VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+
+jobs:
+  deploy:
+    name: Build static site and sync S3
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ineeddownpipe-front
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate required configuration
+        run: |
+          test -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" || (echo "Missing secret AWS_ROLE_TO_ASSUME" && exit 1)
+          test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
+          test -n "$FRONTEND_S3_BUCKET" || (echo "Missing repository variable FRONTEND_S3_BUCKET" && exit 1)
+          test -n "$VITE_API_URL" || (echo "Missing repository variable VITE_API_URL" && exit 1)
+          test -n "$VITE_SITE_URL" || (echo "Missing repository variable VITE_SITE_URL" && exit 1)
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ineeddownpipe-front/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync dist to S3
+        run: |
+          aws s3 sync dist/ "s3://$FRONTEND_S3_BUCKET" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "index.html" \
+            --exclude "robots.txt" \
+            --exclude "sitemap.xml"
+
+          aws s3 cp dist/index.html "s3://$FRONTEND_S3_BUCKET/index.html" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "text/html"
+
+          aws s3 cp dist/robots.txt "s3://$FRONTEND_S3_BUCKET/robots.txt" \
+            --cache-control "public,max-age=300" \
+            --content-type "text/plain" || true
+
+          aws s3 cp dist/sitemap.xml "s3://$FRONTEND_S3_BUCKET/sitemap.xml" \
+            --cache-control "public,max-age=300" \
+            --content-type "application/xml" || true
+
+      - name: Invalidate CloudFront
+        if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*"
