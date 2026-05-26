@@ -86,7 +86,6 @@ ECS_CLUSTER=your-ecs-cluster-name
 ECS_SERVICE=your-ecs-service-name
 ECS_DESIRED_COUNT=1
 ECS_CONTAINER_PORT=3001
-ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS=120
 BACKEND_SUBMODULE_REF=main
 ```
 
@@ -113,10 +112,6 @@ Use public subnets for `ECS_ALB_SUBNET_IDS`.
 If ECS reports `Target is in an Availability Zone that is not enabled for the load balancer`, the ALB does not include the subnet/AZ where the task was placed. The workflow reconciles existing ALBs with the ECS service subnets on each deploy; alternatively set `ECS_ALB_SUBNET_IDS` to the public subnets that cover every ECS service AZ.
 
 The backend workflow also ensures the selected ECS container has a `portMappings` entry for `ECS_CONTAINER_PORT` and sets container environment variable `PORT` to the same value. This is required for ECS service load balancer attachment.
-
-`ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS` defaults to `120`. It gives the ECS task time to boot before ECS acts on ALB health check failures.
-
-The workflow also reconciles the target group health check on every deploy: HTTP, traffic port, `/api/health`, success codes `200-399`, and a more tolerant unhealthy threshold. This avoids old target groups continuing to fail on `/` or the wrong health check configuration.
 
 For ECS services using `awsvpc` network mode, the ALB target group must use target type `ip`. If `ECS_TARGET_GROUP_NAME` points to an existing target group with target type `instance` (common for Elastic Beanstalk), the workflow creates a dedicated `ip` target group instead.
 

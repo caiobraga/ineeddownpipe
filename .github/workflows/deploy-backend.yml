@@ -262,12 +262,11 @@ jobs:
                 --output text)"
             fi
 
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$ALB_SECURITY_GROUP_ID" \
+              --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTP from internet"}]' \
+              >/dev/null 2>&1 || true
           fi
-
-          aws ec2 authorize-security-group-ingress \
-            --group-id "$ALB_SECURITY_GROUP_ID" \
-            --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTP from internet"}]' \
-            >/dev/null 2>&1 || true
 
           if [ -n "$SERVICE_SECURITY_GROUP" ]; then
             aws ec2 authorize-security-group-ingress \
@@ -354,18 +353,6 @@ jobs:
             exit 1
           fi
 
-          aws elbv2 modify-target-group \
-            --target-group-arn "$TARGET_GROUP_ARN" \
-            --health-check-protocol HTTP \
-            --health-check-port traffic-port \
-            --health-check-path /api/health \
-            --matcher HttpCode=200-399 \
-            --health-check-interval-seconds 30 \
-            --health-check-timeout-seconds 10 \
-            --healthy-threshold-count 2 \
-            --unhealthy-threshold-count 5 \
-            >/dev/null
-
           LISTENER_ARN="$(aws elbv2 describe-listeners \
             --load-balancer-arn "$ALB_ARN" \
             --query 'Listeners[?Port==`80`].ListenerArn | [0]' \
@@ -438,7 +425,6 @@ jobs:
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEFINITION_ARN" \
             --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$RESOLVED_ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
-            --health-check-grace-period-seconds "${ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS:-120}" \
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
             --force-new-deployment \
             2> update-service.err; then
