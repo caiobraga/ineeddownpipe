@@ -84,8 +84,13 @@ AWS_ROLE_ARN=arn:aws:iam::<account-id>:role/<role-name>
 ECR_REPOSITORY=ineeddownpipe-api
 ECS_CLUSTER=your-ecs-cluster-name
 ECS_SERVICE=your-ecs-service-name
-ECS_CONTAINER_NAME=ineeddownpipe-api
 ECS_DESIRED_COUNT=1
+```
+
+`ECS_CONTAINER_NAME` is optional when the ECS task definition has only one container. Set it only if the task definition has multiple containers:
+
+```text
+ECS_CONTAINER_NAME=ineeddownpipe-api
 ```
 
 ### Frontend workflow

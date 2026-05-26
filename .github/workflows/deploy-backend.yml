@@ -52,7 +52,6 @@ jobs:
           test -n "$ECR_REPOSITORY" || (echo "Missing repository variable ECR_REPOSITORY" && exit 1)
           test -n "$ECS_CLUSTER" || (echo "Missing repository variable ECS_CLUSTER" && exit 1)
           test -n "$ECS_SERVICE" || (echo "Missing repository variable ECS_SERVICE" && exit 1)
-          test -n "$ECS_CONTAINER_NAME" || (echo "Missing repository variable ECS_CONTAINER_NAME" && exit 1)
 
       - name: Configure AWS credentials with OIDC role
         if: ${{ env.AWS_ROLE_ARN != '' }}
@@ -123,9 +122,21 @@ jobs:
         env:
           IMAGE_URI: ${{ steps.image.outputs.image_uri }}
         run: |
+          CONTAINER_NAME="$ECS_CONTAINER_NAME"
+          if [ -z "$CONTAINER_NAME" ]; then
+            CONTAINER_COUNT="$(jq '.containerDefinitions | length' task-definition.json)"
+            if [ "$CONTAINER_COUNT" != "1" ]; then
+              echo "::error::ECS_CONTAINER_NAME is required because task definition has $CONTAINER_COUNT containers."
+              jq -r '.containerDefinitions[].name' task-definition.json
+              exit 1
+            fi
+            CONTAINER_NAME="$(jq -r '.containerDefinitions[0].name' task-definition.json)"
+            echo "Auto-detected ECS container name: $CONTAINER_NAME"
+          fi
+
           jq \
             --arg IMAGE_URI "$IMAGE_URI" \
-            --arg CONTAINER_NAME "$ECS_CONTAINER_NAME" \
+            --arg CONTAINER_NAME "$CONTAINER_NAME" \
             'del(
               .taskDefinitionArn,
               .revision,
@@ -141,9 +152,11 @@ jobs:
             )' \
             task-definition.json > task-definition-rendered.json
 
-          UPDATED_COUNT="$(jq --arg CONTAINER_NAME "$ECS_CONTAINER_NAME" '[.containerDefinitions[] | select(.name == $CONTAINER_NAME)] | length' task-definition-rendered.json)"
+          UPDATED_COUNT="$(jq --arg CONTAINER_NAME "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name == $CONTAINER_NAME)] | length' task-definition-rendered.json)"
           test "$UPDATED_COUNT" = "1" || {
-            echo "Container $ECS_CONTAINER_NAME not found in task definition"
+            echo "::error::Container '$CONTAINER_NAME' not found in task definition."
+            echo "Available containers:"
+            jq -r '.containerDefinitions[].name' task-definition.json
             exit 1
           }
 
