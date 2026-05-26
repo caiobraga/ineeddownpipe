@@ -366,9 +366,50 @@ jobs:
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
             --force-new-deployment
 
-          aws ecs wait services-stable \
+          if ! aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"
+            --services "$ECS_SERVICE"; then
+            echo "::error::ECS service did not become stable before the waiter timed out."
+
+            echo "Service summary:"
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --query 'services[0].{status:status,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,deployments:deployments[].{status:status,rolloutState:rolloutState,rolloutStateReason:rolloutStateReason,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,failedTasks:failedTasks,taskDefinition:taskDefinition}}' \
+              --output json || true
+
+            echo "Recent ECS service events:"
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --query 'services[0].events[0:15].[createdAt,message]' \
+              --output table || true
+
+            echo "Target group health:"
+            aws elbv2 describe-target-health \
+              --target-group-arn "$ECS_TARGET_GROUP_ARN" \
+              --query 'TargetHealthDescriptions[].{target:Target.Id,port:Target.Port,state:TargetHealth.State,reason:TargetHealth.Reason,description:TargetHealth.Description}' \
+              --output table || true
+
+            TASK_ARNS="$(aws ecs list-tasks \
+              --cluster "$ECS_CLUSTER" \
+              --service-name "$ECS_SERVICE" \
+              --desired-status STOPPED \
+              --query 'taskArns[0:10]' \
+              --output text || true)"
+
+            if [ -n "$TASK_ARNS" ] && [ "$TASK_ARNS" != "None" ]; then
+              echo "Recent stopped tasks:"
+              aws ecs describe-tasks \
+                --cluster "$ECS_CLUSTER" \
+                --tasks $TASK_ARNS \
+                --query 'tasks[].{taskArn:taskArn,stoppedReason:stoppedReason,stopCode:stopCode,lastStatus:lastStatus,containers:containers[].{name:name,exitCode:exitCode,reason:reason,lastStatus:lastStatus,image:image}}' \
+                --output json || true
+            fi
+
+            echo "Likely causes: container crash, health check failing at /api/health, ECS task security group not allowing ALB on port $ECS_CONTAINER_PORT, wrong public subnets, or task cannot pull/start image."
+            exit 1
+          fi
 
           aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
