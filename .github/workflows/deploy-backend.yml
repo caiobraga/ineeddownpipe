@@ -284,6 +284,21 @@ jobs:
             --query 'TargetGroups[0].TargetGroupArn' \
             --output text 2>/dev/null || true)"
 
+          if [ -n "$TARGET_GROUP_ARN" ] && [ "$TARGET_GROUP_ARN" != "None" ]; then
+            TARGET_TYPE="$(aws elbv2 describe-target-groups \
+              --target-group-arns "$TARGET_GROUP_ARN" \
+              --query 'TargetGroups[0].TargetType' \
+              --output text)"
+            if [ "$TARGET_TYPE" != "ip" ]; then
+              echo "::warning::Target group '$TARGET_GROUP_NAME' has target type '$TARGET_TYPE'. ECS awsvpc/Fargate requires target type 'ip'. Creating a dedicated ECS target group instead."
+              TARGET_GROUP_NAME="$(echo "${ECS_SERVICE}-ip-tg" | tr -cd '[:alnum:]-' | cut -c1-32)"
+              TARGET_GROUP_ARN="$(aws elbv2 describe-target-groups \
+                --names "$TARGET_GROUP_NAME" \
+                --query 'TargetGroups[0].TargetGroupArn' \
+                --output text 2>/dev/null || true)"
+            fi
+          fi
+
           if [ -z "$TARGET_GROUP_ARN" ] || [ "$TARGET_GROUP_ARN" = "None" ]; then
             TARGET_GROUP_ARN="$(aws elbv2 create-target-group \
               --name "$TARGET_GROUP_NAME" \
@@ -296,6 +311,15 @@ jobs:
               --matcher HttpCode=200-399 \
               --query 'TargetGroups[0].TargetGroupArn' \
               --output text)"
+          fi
+
+          TARGET_TYPE="$(aws elbv2 describe-target-groups \
+            --target-group-arns "$TARGET_GROUP_ARN" \
+            --query 'TargetGroups[0].TargetType' \
+            --output text)"
+          if [ "$TARGET_TYPE" != "ip" ]; then
+            echo "::error::Target group '$TARGET_GROUP_NAME' is still target type '$TARGET_TYPE'. ECS awsvpc/Fargate requires target type 'ip'. Clear ECS_TARGET_GROUP_NAME or set it to a target group with target type ip."
+            exit 1
           fi
 
           LISTENER_ARN="$(aws elbv2 describe-listeners \
