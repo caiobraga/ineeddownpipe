@@ -366,18 +366,56 @@ jobs:
 
       - name: Register task definition and update service
         run: |
-          NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+          echo "Rendered task definition summary:"
+          jq '{
+            family,
+            networkMode,
+            requiresCompatibilities,
+            cpu,
+            memory,
+            taskRoleArn,
+            executionRoleArn,
+            containers: [.containerDefinitions[] | {name, image, essential, portMappings, environment: ((.environment // []) | map(select(.name == "PORT")))}]
+          }' task-definition-rendered.json
+
+          if ! NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
             --cli-input-json file://task-definition-rendered.json \
             --query 'taskDefinition.taskDefinitionArn' \
-            --output text)"
+            --output text 2> register-task-definition.err)"; then
+            echo "::error::Failed to register ECS task definition."
+            cat register-task-definition.err
+            exit 1
+          fi
 
-          aws ecs update-service \
+          echo "Registered task definition: $NEW_TASK_DEFINITION_ARN"
+
+          echo "Current service load balancer/deployment config:"
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].{deploymentController:deploymentController,loadBalancers:loadBalancers,networkConfiguration:networkConfiguration}' \
+            --output json || true
+
+          echo "Target group selected for ECS service:"
+          aws elbv2 describe-target-groups \
+            --target-group-arns "$ECS_TARGET_GROUP_ARN" \
+            --query 'TargetGroups[0].{targetGroupArn:TargetGroupArn,targetType:TargetType,port:Port,protocol:Protocol,vpcId:VpcId,healthCheckPath:HealthCheckPath}' \
+            --output json || true
+
+          if ! aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEFINITION_ARN" \
             --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$RESOLVED_ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
-            --force-new-deployment
+            --force-new-deployment \
+            2> update-service.err; then
+            echo "::error::Failed to update ECS service '$ECS_SERVICE' in cluster '$ECS_CLUSTER'."
+            cat update-service.err
+            echo "If the error mentions deploymentController=CODE_DEPLOY or EXTERNAL, this workflow must be changed to use that deployment controller instead of direct update-service."
+            echo "If the error mentions loadBalancers, verify the target group targetType is ip and the container name/port match the rendered task definition above."
+            exit 1
+          fi
 
           if ! aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
