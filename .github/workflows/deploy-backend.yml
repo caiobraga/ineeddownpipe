@@ -426,6 +426,7 @@ jobs:
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEFINITION_ARN" \
             --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$RESOLVED_ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
+            --health-check-grace-period-seconds "${ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS:-120}" \
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
             --force-new-deployment \
             2> update-service.err; then
