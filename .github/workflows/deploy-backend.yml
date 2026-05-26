@@ -219,11 +219,16 @@ jobs:
           SERVICE_SUBNETS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets // [] | join(" ")' service.json)"
           SERVICE_SECURITY_GROUPS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups // [] | join(" ")' service.json)"
 
-          SUBNET_IDS="${ECS_ALB_SUBNET_IDS:-$SERVICE_SUBNETS}"
+          normalize_id_list() {
+            printf '%s' "$1" | tr ',\r\n\t' '    ' | xargs
+          }
+
+          SUBNET_IDS="$(normalize_id_list "${ECS_ALB_SUBNET_IDS:-$SERVICE_SUBNETS}")"
           if [ -z "$SUBNET_IDS" ]; then
             echo "::error::Could not infer ECS service subnets. Set GitHub variable ECS_ALB_SUBNET_IDS with public subnet IDs separated by spaces."
             exit 1
           fi
+          read -r -a SUBNET_ID_ARGS <<< "$SUBNET_IDS"
 
           FIRST_SUBNET="$(echo "$SUBNET_IDS" | awk '{print $1}')"
           VPC_ID="${ECS_VPC_ID:-$(aws ec2 describe-subnets --subnet-ids "$FIRST_SUBNET" --query 'Subnets[0].VpcId' --output text)}"
@@ -281,7 +286,7 @@ jobs:
               --type application \
               --scheme internet-facing \
               --security-groups "$ALB_SECURITY_GROUP_ID" \
-              --subnets $SUBNET_IDS \
+              --subnets "${SUBNET_ID_ARGS[@]}" \
               --query 'LoadBalancers[0].LoadBalancerArn' \
               --output text)"
           else
@@ -289,7 +294,7 @@ jobs:
             echo "Ensuring ALB is enabled for ECS service subnets: $SUBNET_IDS"
             aws elbv2 set-subnets \
               --load-balancer-arn "$ALB_ARN" \
-              --subnets $SUBNET_IDS \
+              --subnets "${SUBNET_ID_ARGS[@]}" \
               >/dev/null
 
             aws elbv2 set-security-groups \
