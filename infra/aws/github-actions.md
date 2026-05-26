@@ -85,6 +85,7 @@ ECR_REPOSITORY=ineeddownpipe-api
 ECS_CLUSTER=your-ecs-cluster-name
 ECS_SERVICE=your-ecs-service-name
 ECS_DESIRED_COUNT=1
+ECS_CONTAINER_PORT=3001
 ```
 
 `ECS_CONTAINER_NAME` is optional when the ECS task definition has only one container. Set it only if the task definition has multiple containers:
@@ -92,6 +93,18 @@ ECS_DESIRED_COUNT=1
 ```text
 ECS_CONTAINER_NAME=ineeddownpipe-api
 ```
+
+The backend workflow creates/reuses an internet-facing Application Load Balancer and prints its public URL in the workflow summary. By default it infers VPC, subnets, and service security group from the ECS service network configuration. If inference is not enough, set:
+
+```text
+ECS_ALB_NAME=ineeddownpipe-back-alb
+ECS_TARGET_GROUP_NAME=ineeddownpipe-back-tg
+ECS_ALB_SUBNET_IDS=subnet-aaa subnet-bbb
+ECS_VPC_ID=vpc-...
+ECS_ALB_SECURITY_GROUP_ID=sg-...
+```
+
+Use public subnets for `ECS_ALB_SUBNET_IDS`.
 
 ### Frontend workflow
 
@@ -116,6 +129,23 @@ Attach permissions like these to the GitHub Actions role. Scope resources down t
       "Effect": "Allow",
       "Action": [
         "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateSecurityGroup",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:ModifyListener"
       ],
       "Resource": "*"
     },

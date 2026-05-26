@@ -23,7 +23,13 @@ env:
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
   ECS_SERVICE: ${{ vars.ECS_SERVICE }}
   ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+  ECS_CONTAINER_PORT: ${{ vars.ECS_CONTAINER_PORT }}
   ECS_DESIRED_COUNT: ${{ vars.ECS_DESIRED_COUNT }}
+  ECS_ALB_NAME: ${{ vars.ECS_ALB_NAME }}
+  ECS_TARGET_GROUP_NAME: ${{ vars.ECS_TARGET_GROUP_NAME }}
+  ECS_ALB_SUBNET_IDS: ${{ vars.ECS_ALB_SUBNET_IDS }}
+  ECS_ALB_SECURITY_GROUP_ID: ${{ vars.ECS_ALB_SECURITY_GROUP_ID }}
+  ECS_VPC_ID: ${{ vars.ECS_VPC_ID }}
 
 jobs:
   deploy:
@@ -123,6 +129,10 @@ jobs:
           IMAGE_URI: ${{ steps.image.outputs.image_uri }}
         run: |
           CONTAINER_NAME="$ECS_CONTAINER_NAME"
+          if [[ "$CONTAINER_NAME" == arn:* || "$CONTAINER_NAME" == *"/"* ]]; then
+            echo "::warning::ECS_CONTAINER_NAME looks like an ARN/path, not a container name. Ignoring it and auto-detecting."
+            CONTAINER_NAME=""
+          fi
           if [ -z "$CONTAINER_NAME" ]; then
             CONTAINER_COUNT="$(jq '.containerDefinitions | length' task-definition.json)"
             if [ "$CONTAINER_COUNT" != "1" ]; then
@@ -133,6 +143,7 @@ jobs:
             CONTAINER_NAME="$(jq -r '.containerDefinitions[0].name' task-definition.json)"
             echo "Auto-detected ECS container name: $CONTAINER_NAME"
           fi
+          echo "RESOLVED_ECS_CONTAINER_NAME=$CONTAINER_NAME" >> "$GITHUB_ENV"
 
           jq \
             --arg IMAGE_URI "$IMAGE_URI" \
@@ -160,6 +171,136 @@ jobs:
             exit 1
           }
 
+      - name: Ensure public ALB for ECS service
+        run: |
+          CONTAINER_PORT="${ECS_CONTAINER_PORT:-3001}"
+          echo "ECS_CONTAINER_PORT=$CONTAINER_PORT" >> "$GITHUB_ENV"
+
+          SERVICE_SUBNETS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets // [] | join(" ")' service.json)"
+          SERVICE_SECURITY_GROUPS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups // [] | join(" ")' service.json)"
+
+          SUBNET_IDS="${ECS_ALB_SUBNET_IDS:-$SERVICE_SUBNETS}"
+          if [ -z "$SUBNET_IDS" ]; then
+            echo "::error::Could not infer ECS service subnets. Set GitHub variable ECS_ALB_SUBNET_IDS with public subnet IDs separated by spaces."
+            exit 1
+          fi
+
+          FIRST_SUBNET="$(echo "$SUBNET_IDS" | awk '{print $1}')"
+          VPC_ID="${ECS_VPC_ID:-$(aws ec2 describe-subnets --subnet-ids "$FIRST_SUBNET" --query 'Subnets[0].VpcId' --output text)}"
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "::error::Could not determine VPC ID. Set GitHub variable ECS_VPC_ID."
+            exit 1
+          fi
+
+          SERVICE_SECURITY_GROUP="$(echo "$SERVICE_SECURITY_GROUPS" | awk '{print $1}')"
+          if [ -z "$SERVICE_SECURITY_GROUP" ]; then
+            echo "::warning::Could not infer ECS service security group. The ALB may be unable to reach the task unless ingress is already configured."
+          fi
+
+          ALB_NAME="$(echo "${ECS_ALB_NAME:-$ECS_SERVICE-alb}" | tr -cd '[:alnum:]-' | cut -c1-32)"
+          TARGET_GROUP_NAME="$(echo "${ECS_TARGET_GROUP_NAME:-$ECS_SERVICE-tg}" | tr -cd '[:alnum:]-' | cut -c1-32)"
+          ALB_SECURITY_GROUP_ID="$ECS_ALB_SECURITY_GROUP_ID"
+
+          if [ -z "$ALB_SECURITY_GROUP_ID" ]; then
+            ALB_SECURITY_GROUP_NAME="$ALB_NAME-sg"
+            ALB_SECURITY_GROUP_ID="$(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=$ALB_SECURITY_GROUP_NAME" \
+              --query 'SecurityGroups[0].GroupId' \
+              --output text 2>/dev/null || true)"
+
+            if [ -z "$ALB_SECURITY_GROUP_ID" ] || [ "$ALB_SECURITY_GROUP_ID" = "None" ]; then
+              ALB_SECURITY_GROUP_ID="$(aws ec2 create-security-group \
+                --group-name "$ALB_SECURITY_GROUP_NAME" \
+                --description "Public ALB for $ECS_SERVICE" \
+                --vpc-id "$VPC_ID" \
+                --query 'GroupId' \
+                --output text)"
+            fi
+
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$ALB_SECURITY_GROUP_ID" \
+              --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTP from internet"}]' \
+              >/dev/null 2>&1 || true
+          fi
+
+          if [ -n "$SERVICE_SECURITY_GROUP" ]; then
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$SERVICE_SECURITY_GROUP" \
+              --ip-permissions "IpProtocol=tcp,FromPort=$CONTAINER_PORT,ToPort=$CONTAINER_PORT,UserIdGroupPairs=[{GroupId=$ALB_SECURITY_GROUP_ID,Description=\"ALB to ECS task\"}]" \
+              >/dev/null 2>&1 || true
+          fi
+
+          ALB_ARN="$(aws elbv2 describe-load-balancers \
+            --names "$ALB_NAME" \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text 2>/dev/null || true)"
+
+          if [ -z "$ALB_ARN" ] || [ "$ALB_ARN" = "None" ]; then
+            ALB_ARN="$(aws elbv2 create-load-balancer \
+              --name "$ALB_NAME" \
+              --type application \
+              --scheme internet-facing \
+              --security-groups "$ALB_SECURITY_GROUP_ID" \
+              --subnets $SUBNET_IDS \
+              --query 'LoadBalancers[0].LoadBalancerArn' \
+              --output text)"
+          fi
+
+          aws elbv2 wait load-balancer-available --load-balancer-arns "$ALB_ARN"
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers \
+            --load-balancer-arns "$ALB_ARN" \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)"
+
+          TARGET_GROUP_ARN="$(aws elbv2 describe-target-groups \
+            --names "$TARGET_GROUP_NAME" \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text 2>/dev/null || true)"
+
+          if [ -z "$TARGET_GROUP_ARN" ] || [ "$TARGET_GROUP_ARN" = "None" ]; then
+            TARGET_GROUP_ARN="$(aws elbv2 create-target-group \
+              --name "$TARGET_GROUP_NAME" \
+              --protocol HTTP \
+              --port "$CONTAINER_PORT" \
+              --vpc-id "$VPC_ID" \
+              --target-type ip \
+              --health-check-protocol HTTP \
+              --health-check-path /api/health \
+              --matcher HttpCode=200-399 \
+              --query 'TargetGroups[0].TargetGroupArn' \
+              --output text)"
+          fi
+
+          LISTENER_ARN="$(aws elbv2 describe-listeners \
+            --load-balancer-arn "$ALB_ARN" \
+            --query 'Listeners[?Port==`80`].ListenerArn | [0]' \
+            --output text 2>/dev/null || true)"
+
+          if [ -z "$LISTENER_ARN" ] || [ "$LISTENER_ARN" = "None" ]; then
+            aws elbv2 create-listener \
+              --load-balancer-arn "$ALB_ARN" \
+              --protocol HTTP \
+              --port 80 \
+              --default-actions Type=forward,TargetGroupArn="$TARGET_GROUP_ARN" \
+              >/dev/null
+          else
+            aws elbv2 modify-listener \
+              --listener-arn "$LISTENER_ARN" \
+              --default-actions Type=forward,TargetGroupArn="$TARGET_GROUP_ARN" \
+              >/dev/null
+          fi
+
+          echo "ECS_TARGET_GROUP_ARN=$TARGET_GROUP_ARN" >> "$GITHUB_ENV"
+          echo "BACKEND_PUBLIC_URL=http://$ALB_DNS" >> "$GITHUB_ENV"
+          {
+            echo "### Backend URL"
+            echo ""
+            echo "Set frontend GitHub variable \`VITE_API_URL\` to:"
+            echo ""
+            echo "\`http://$ALB_DNS\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Register task definition and update service
         run: |
           NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
@@ -171,6 +312,7 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEFINITION_ARN" \
+            --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$RESOLVED_ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
             --force-new-deployment
 
