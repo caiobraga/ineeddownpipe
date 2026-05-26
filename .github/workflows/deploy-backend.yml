@@ -259,7 +259,7 @@ jobs:
           fi
           read -r -a SUBNET_ID_ARGS <<< "$SUBNET_IDS"
 
-          TASK_SUBNET_IDS="$(normalize_id_list "${ECS_TASK_SUBNET_IDS:-$SERVICE_SUBNETS}")"
+          TASK_SUBNET_IDS="$(normalize_id_list "${ECS_TASK_SUBNET_IDS:-$SUBNET_IDS}")"
           read -r -a TASK_SUBNET_ID_ARGS <<< "$TASK_SUBNET_IDS"
 
           FIRST_SUBNET="$(echo "$SUBNET_IDS" | awk '{print $1}')"

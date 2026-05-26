@@ -119,14 +119,13 @@ The backend workflow creates/reuses an internet-facing Application Load Balancer
 ECS_ALB_NAME=ineeddownpipe-back-alb
 ECS_TARGET_GROUP_NAME=ineeddownpipe-back-tg
 ECS_ALB_SUBNET_IDS=subnet-aaa subnet-bbb
-ECS_TASK_SUBNET_IDS=subnet-aaa subnet-bbb
 ECS_VPC_ID=vpc-...
 ECS_ALB_SECURITY_GROUP_ID=sg-...
 ```
 
 Use public subnets for `ECS_ALB_SUBNET_IDS`.
 
-If ECS reports `Target is in an Availability Zone that is not enabled for the load balancer`, the ALB does not include the AZ where the task was placed. Set `ECS_ALB_SUBNET_IDS` to public subnets covering every ECS task AZ, or set `ECS_TASK_SUBNET_IDS` to the task subnets/AZs you want ECS to use. For the simple public-subnet setup, `ECS_TASK_SUBNET_IDS` can use the same subnet list as `ECS_ALB_SUBNET_IDS`.
+If ECS reports `Target is in an Availability Zone that is not enabled for the load balancer`, the ALB does not include the AZ where the task was placed. Set `ECS_ALB_SUBNET_IDS` to the public subnets you want the ALB and ECS tasks to use. The workflow uses the same subnet list for ECS tasks by default. Set `ECS_TASK_SUBNET_IDS` only if you need a different task subnet list.
 
 The backend workflow also ensures the selected ECS container has a `portMappings` entry for `ECS_CONTAINER_PORT` and sets container environment variable `PORT` to the same value. This is required for ECS service load balancer attachment.
 
