@@ -101,7 +101,9 @@ REFRESH_MIN_HOURS=6
 REFRESH_SECRET=your-refresh-secret
 ```
 
-Set `AUTO_REFRESH_ON_STARTUP=always` to scrape after every task start, or `false` to disable startup scraping. Set `AUTO_REFRESH_INTERVAL_HOURS` to a positive number if you want the running service to refresh periodically. Without persistent storage, `/app/data` is ephemeral and the service will scrape again when ECS replaces the task.
+Set `REFRESH_SECRET` as a GitHub secret. The backend workflow injects it into the ECS task definition so authenticated `POST /api/refresh` requests work in production.
+
+Set the other values as GitHub repository variables if you want to override the defaults. `AUTO_REFRESH_ON_STARTUP=always` scrapes after every task start, and `false` disables startup scraping. Set `AUTO_REFRESH_INTERVAL_HOURS` to a positive number if you want the running service to refresh periodically. Without persistent storage, `/app/data` is ephemeral and the service will scrape again when ECS replaces the task.
 
 `BACKEND_SUBMODULE_REF` controls which branch/ref is fetched from `ineeddownpipe-back` before building the Docker image. This avoids deploying an old submodule pointer from the parent repository.
 

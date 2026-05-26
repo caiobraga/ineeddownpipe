@@ -32,6 +32,11 @@ env:
   ECS_ALB_SECURITY_GROUP_ID: ${{ vars.ECS_ALB_SECURITY_GROUP_ID }}
   ECS_VPC_ID: ${{ vars.ECS_VPC_ID }}
   BACKEND_SUBMODULE_REF: ${{ vars.BACKEND_SUBMODULE_REF }}
+  REFRESH_SECRET: ${{ secrets.REFRESH_SECRET }}
+  AUTO_REFRESH_ON_STARTUP: ${{ vars.AUTO_REFRESH_ON_STARTUP }}
+  AUTO_REFRESH_STARTUP_DELAY_MS: ${{ vars.AUTO_REFRESH_STARTUP_DELAY_MS }}
+  AUTO_REFRESH_INTERVAL_HOURS: ${{ vars.AUTO_REFRESH_INTERVAL_HOURS }}
+  REFRESH_MIN_HOURS: ${{ vars.REFRESH_MIN_HOURS }}
 
 jobs:
   deploy:
@@ -72,6 +77,9 @@ jobs:
           test -n "$ECR_REPOSITORY" || (echo "Missing repository variable ECR_REPOSITORY" && exit 1)
           test -n "$ECS_CLUSTER" || (echo "Missing repository variable ECS_CLUSTER" && exit 1)
           test -n "$ECS_SERVICE" || (echo "Missing repository variable ECS_SERVICE" && exit 1)
+          if [ -z "$REFRESH_SECRET" ]; then
+            echo "::warning::GitHub secret REFRESH_SECRET is not set. Public /api/refresh will remain disabled in production."
+          fi
 
       - name: Configure AWS credentials with OIDC role
         if: ${{ env.AWS_ROLE_ARN != '' }}
@@ -170,8 +178,15 @@ jobs:
           jq \
             --arg IMAGE_URI "$IMAGE_URI" \
             --arg CONTAINER_NAME "$CONTAINER_NAME" \
+            --arg REFRESH_SECRET "$REFRESH_SECRET" \
+            --arg AUTO_REFRESH_ON_STARTUP "$AUTO_REFRESH_ON_STARTUP" \
+            --arg AUTO_REFRESH_STARTUP_DELAY_MS "$AUTO_REFRESH_STARTUP_DELAY_MS" \
+            --arg AUTO_REFRESH_INTERVAL_HOURS "$AUTO_REFRESH_INTERVAL_HOURS" \
+            --arg REFRESH_MIN_HOURS "$REFRESH_MIN_HOURS" \
             --argjson CONTAINER_PORT "$CONTAINER_PORT" \
-            'del(
+            'def optional_env($name; $value):
+              if $value == "" then [] else [{name: $name, value: $value}] end;
+            del(
               .taskDefinitionArn,
               .revision,
               .status,
@@ -190,8 +205,20 @@ jobs:
                         + [{containerPort: $CONTAINER_PORT, hostPort: $CONTAINER_PORT, protocol: "tcp"}]
                       )
                     | .environment = (
-                        (.environment // [] | map(select(.name != "PORT")))
+                        (.environment // [] | map(select(
+                          .name != "PORT" and
+                          .name != "REFRESH_SECRET" and
+                          .name != "AUTO_REFRESH_ON_STARTUP" and
+                          .name != "AUTO_REFRESH_STARTUP_DELAY_MS" and
+                          .name != "AUTO_REFRESH_INTERVAL_HOURS" and
+                          .name != "REFRESH_MIN_HOURS"
+                        )))
                         + [{name: "PORT", value: ($CONTAINER_PORT | tostring)}]
+                        + optional_env("REFRESH_SECRET"; $REFRESH_SECRET)
+                        + optional_env("AUTO_REFRESH_ON_STARTUP"; $AUTO_REFRESH_ON_STARTUP)
+                        + optional_env("AUTO_REFRESH_STARTUP_DELAY_MS"; $AUTO_REFRESH_STARTUP_DELAY_MS)
+                        + optional_env("AUTO_REFRESH_INTERVAL_HOURS"; $AUTO_REFRESH_INTERVAL_HOURS)
+                        + optional_env("REFRESH_MIN_HOURS"; $REFRESH_MIN_HOURS)
                       )
                   else
                     .
