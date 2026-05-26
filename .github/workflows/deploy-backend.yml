@@ -87,16 +87,32 @@ jobs:
 
       - name: Fetch current ECS task definition
         run: |
-          TASK_DEFINITION_ARN="$(aws ecs describe-services \
+          SERVICE_JSON="$(aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE" \
-            --query 'services[0].taskDefinition' \
-            --output text)"
+            --output json)"
 
-          test -n "$TASK_DEFINITION_ARN" && test "$TASK_DEFINITION_ARN" != "None" || {
-            echo "Could not find task definition for service $ECS_SERVICE"
+          echo "$SERVICE_JSON" > service.json
+
+          FAILURE_REASON="$(jq -r '.failures[0].reason // empty' service.json)"
+          if [ -n "$FAILURE_REASON" ]; then
+            echo "::error::ECS service lookup failed for service '$ECS_SERVICE' in cluster '$ECS_CLUSTER' (region '$AWS_REGION'): $FAILURE_REASON"
+            echo "Existing services in cluster '$ECS_CLUSTER':"
+            aws ecs list-services \
+              --cluster "$ECS_CLUSTER" \
+              --query 'serviceArns[]' \
+              --output text || true
             exit 1
-          }
+          fi
+
+          TASK_DEFINITION_ARN="$(jq -r '.services[0].taskDefinition // empty' service.json)"
+
+          if [ -z "$TASK_DEFINITION_ARN" ] || [ "$TASK_DEFINITION_ARN" = "None" ]; then
+            echo "::error::Could not find task definition for ECS service '$ECS_SERVICE' in cluster '$ECS_CLUSTER'."
+            echo "Service details:"
+            jq '.services[0] // {}' service.json
+            exit 1
+          fi
 
           aws ecs describe-task-definition \
             --task-definition "$TASK_DEFINITION_ARN" \
