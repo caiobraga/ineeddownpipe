@@ -116,6 +116,8 @@ The backend workflow also ensures the selected ECS container has a `portMappings
 
 `ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS` defaults to `120`. It gives the ECS task time to boot before ECS acts on ALB health check failures.
 
+The workflow also reconciles the target group health check on every deploy: HTTP, traffic port, `/api/health`, success codes `200-399`, and a more tolerant unhealthy threshold. This avoids old target groups continuing to fail on `/` or the wrong health check configuration.
+
 For ECS services using `awsvpc` network mode, the ALB target group must use target type `ip`. If `ECS_TARGET_GROUP_NAME` points to an existing target group with target type `instance` (common for Elastic Beanstalk), the workflow creates a dedicated `ip` target group instead.
 
 After updating the ECS service, the workflow verifies that the active task definition and at least one running task use the exact ECR image pushed in the current run. If the service is still running an old/wrong image, the deploy fails and prints the expected image, active image, task definition, and running task images.

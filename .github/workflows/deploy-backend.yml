@@ -354,6 +354,18 @@ jobs:
             exit 1
           fi
 
+          aws elbv2 modify-target-group \
+            --target-group-arn "$TARGET_GROUP_ARN" \
+            --health-check-protocol HTTP \
+            --health-check-port traffic-port \
+            --health-check-path /api/health \
+            --matcher HttpCode=200-399 \
+            --health-check-interval-seconds 30 \
+            --health-check-timeout-seconds 10 \
+            --healthy-threshold-count 2 \
+            --unhealthy-threshold-count 5 \
+            >/dev/null
+
           LISTENER_ARN="$(aws elbv2 describe-listeners \
             --load-balancer-arn "$ALB_ARN" \
             --query 'Listeners[?Port==`80`].ListenerArn | [0]' \
