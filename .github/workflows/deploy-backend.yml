@@ -284,6 +284,18 @@ jobs:
               --subnets $SUBNET_IDS \
               --query 'LoadBalancers[0].LoadBalancerArn' \
               --output text)"
+          else
+            echo "Reusing existing ALB: $ALB_NAME"
+            echo "Ensuring ALB is enabled for ECS service subnets: $SUBNET_IDS"
+            aws elbv2 set-subnets \
+              --load-balancer-arn "$ALB_ARN" \
+              --subnets $SUBNET_IDS \
+              >/dev/null
+
+            aws elbv2 set-security-groups \
+              --load-balancer-arn "$ALB_ARN" \
+              --security-groups "$ALB_SECURITY_GROUP_ID" \
+              >/dev/null
           fi
 
           aws elbv2 wait load-balancer-available --load-balancer-arns "$ALB_ARN"

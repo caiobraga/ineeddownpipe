@@ -109,6 +109,8 @@ ECS_ALB_SECURITY_GROUP_ID=sg-...
 
 Use public subnets for `ECS_ALB_SUBNET_IDS`.
 
+If ECS reports `Target is in an Availability Zone that is not enabled for the load balancer`, the ALB does not include the subnet/AZ where the task was placed. The workflow reconciles existing ALBs with the ECS service subnets on each deploy; alternatively set `ECS_ALB_SUBNET_IDS` to the public subnets that cover every ECS service AZ.
+
 The backend workflow also ensures the selected ECS container has a `portMappings` entry for `ECS_CONTAINER_PORT` and sets container environment variable `PORT` to the same value. This is required for ECS service load balancer attachment.
 
 For ECS services using `awsvpc` network mode, the ALB target group must use target type `ip`. If `ECS_TARGET_GROUP_NAME` points to an existing target group with target type `instance` (common for Elastic Beanstalk), the workflow creates a dedicated `ip` target group instead.
