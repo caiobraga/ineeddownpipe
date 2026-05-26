@@ -126,7 +126,9 @@ VITE_API_URL=https://api.your-domain.com
 VITE_SITE_URL=https://www.your-domain.com
 ```
 
-`CLOUDFRONT_DISTRIBUTION_ID` can be empty if you do not want invalidations.
+`VITE_API_URL` must include the protocol (`http://` or `https://`). Without it, the built frontend requests `/api/...` from CloudFront and receives `index.html` instead of JSON.
+
+`CLOUDFRONT_DISTRIBUTION_ID` is required. The frontend workflow creates a `/*` invalidation after every successful S3 sync so CloudFront serves the newest build and SPA routing settings.
 
 ## 4. IAM Permissions
 

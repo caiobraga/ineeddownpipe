@@ -49,8 +49,17 @@ jobs:
           fi
           test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION" && exit 1)
           test -n "$FRONTEND_S3_BUCKET" || (echo "Missing repository variable FRONTEND_S3_BUCKET" && exit 1)
+          test -n "$CLOUDFRONT_DISTRIBUTION_ID" || (echo "Missing repository variable CLOUDFRONT_DISTRIBUTION_ID" && exit 1)
           test -n "$VITE_API_URL" || (echo "Missing repository variable VITE_API_URL" && exit 1)
           test -n "$VITE_SITE_URL" || (echo "Missing repository variable VITE_SITE_URL" && exit 1)
+          case "$VITE_API_URL" in
+            http://*|https://*) ;;
+            *)
+              echo "Repository variable VITE_API_URL must include http:// or https://."
+              echo "Example: http://ineeddownpipe-backend-414104992.us-east-1.elb.amazonaws.com"
+              exit 1
+              ;;
+          esac
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -103,7 +112,6 @@ jobs:
             --content-type "application/xml" || true
 
       - name: Invalidate CloudFront
-        if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
