@@ -89,6 +89,20 @@ ECS_CONTAINER_PORT=3001
 BACKEND_SUBMODULE_REF=main
 ```
 
+The backend can scrape the product catalog at runtime. In production, it defaults to `AUTO_REFRESH_ON_STARTUP=if-empty`, so a fresh ECS task starts quickly for health checks and then fills `/app/data/products.json` in the background when no cached catalog exists.
+
+Optional backend environment variables:
+
+```text
+AUTO_REFRESH_ON_STARTUP=if-empty
+AUTO_REFRESH_STARTUP_DELAY_MS=1500
+AUTO_REFRESH_INTERVAL_HOURS=0
+REFRESH_MIN_HOURS=6
+REFRESH_SECRET=your-refresh-secret
+```
+
+Set `AUTO_REFRESH_ON_STARTUP=always` to scrape after every task start, or `false` to disable startup scraping. Set `AUTO_REFRESH_INTERVAL_HOURS` to a positive number if you want the running service to refresh periodically. Without persistent storage, `/app/data` is ephemeral and the service will scrape again when ECS replaces the task.
+
 `BACKEND_SUBMODULE_REF` controls which branch/ref is fetched from `ineeddownpipe-back` before building the Docker image. This avoids deploying an old submodule pointer from the parent repository.
 
 `ECS_CONTAINER_NAME` is optional when the ECS task definition has only one container. Set it only if the task definition has multiple containers:
