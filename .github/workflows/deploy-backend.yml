@@ -29,6 +29,7 @@ env:
   ECS_ALB_NAME: ${{ vars.ECS_ALB_NAME }}
   ECS_TARGET_GROUP_NAME: ${{ vars.ECS_TARGET_GROUP_NAME }}
   ECS_ALB_SUBNET_IDS: ${{ vars.ECS_ALB_SUBNET_IDS }}
+  ECS_TASK_SUBNET_IDS: ${{ vars.ECS_TASK_SUBNET_IDS }}
   ECS_ALB_SECURITY_GROUP_ID: ${{ vars.ECS_ALB_SECURITY_GROUP_ID }}
   ECS_VPC_ID: ${{ vars.ECS_VPC_ID }}
   BACKEND_SUBMODULE_REF: ${{ vars.BACKEND_SUBMODULE_REF }}
@@ -245,6 +246,7 @@ jobs:
 
           SERVICE_SUBNETS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets // [] | join(" ")' service.json)"
           SERVICE_SECURITY_GROUPS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups // [] | join(" ")' service.json)"
+          SERVICE_ASSIGN_PUBLIC_IP="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp // "DISABLED"' service.json)"
 
           normalize_id_list() {
             printf '%s' "$1" | tr ',\r\n\t' '    ' | xargs
@@ -257,6 +259,9 @@ jobs:
           fi
           read -r -a SUBNET_ID_ARGS <<< "$SUBNET_IDS"
 
+          TASK_SUBNET_IDS="$(normalize_id_list "${ECS_TASK_SUBNET_IDS:-$SERVICE_SUBNETS}")"
+          read -r -a TASK_SUBNET_ID_ARGS <<< "$TASK_SUBNET_IDS"
+
           FIRST_SUBNET="$(echo "$SUBNET_IDS" | awk '{print $1}')"
           VPC_ID="${ECS_VPC_ID:-$(aws ec2 describe-subnets --subnet-ids "$FIRST_SUBNET" --query 'Subnets[0].VpcId' --output text)}"
           if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
@@ -268,6 +273,22 @@ jobs:
           if [ -z "$SERVICE_SECURITY_GROUP" ]; then
             echo "::warning::Could not infer ECS service security group. The ALB may be unable to reach the task unless ingress is already configured."
           fi
+
+          echo "ALB subnet AZs:"
+          aws ec2 describe-subnets \
+            --subnet-ids "${SUBNET_ID_ARGS[@]}" \
+            --query 'Subnets[].{subnetId:SubnetId,az:AvailabilityZone,cidr:CidrBlock}' \
+            --output table
+
+          echo "ECS task subnet AZs:"
+          aws ec2 describe-subnets \
+            --subnet-ids "${TASK_SUBNET_ID_ARGS[@]}" \
+            --query 'Subnets[].{subnetId:SubnetId,az:AvailabilityZone,cidr:CidrBlock}' \
+            --output table
+
+          echo "ECS_TASK_SUBNET_IDS=$TASK_SUBNET_IDS" >> "$GITHUB_ENV"
+          echo "ECS_TASK_SECURITY_GROUP_IDS=$SERVICE_SECURITY_GROUPS" >> "$GITHUB_ENV"
+          echo "ECS_ASSIGN_PUBLIC_IP=$SERVICE_ASSIGN_PUBLIC_IP" >> "$GITHUB_ENV"
 
           ALB_NAME="$(echo "${ECS_ALB_NAME:-$ECS_SERVICE-alb}" | tr -cd '[:alnum:]-' | cut -c1-32)"
           TARGET_GROUP_NAME="$(echo "${ECS_TARGET_GROUP_NAME:-$ECS_SERVICE-tg}" | tr -cd '[:alnum:]-' | cut -c1-32)"
@@ -447,11 +468,22 @@ jobs:
             --query 'TargetGroups[0].{targetGroupArn:TargetGroupArn,targetType:TargetType,port:Port,protocol:Protocol,vpcId:VpcId,healthCheckPath:HealthCheckPath}' \
             --output json || true
 
+          NETWORK_ARGS=()
+          if [ -n "$ECS_TASK_SUBNET_IDS" ] && [ -n "$ECS_TASK_SECURITY_GROUP_IDS" ]; then
+            TASK_SUBNETS_CSV="$(printf '%s' "$ECS_TASK_SUBNET_IDS" | xargs | tr ' ' ',')"
+            TASK_SECURITY_GROUPS_CSV="$(printf '%s' "$ECS_TASK_SECURITY_GROUP_IDS" | xargs | tr ' ' ',')"
+            NETWORK_ARGS=(
+              --network-configuration
+              "awsvpcConfiguration={subnets=[$TASK_SUBNETS_CSV],securityGroups=[$TASK_SECURITY_GROUPS_CSV],assignPublicIp=${ECS_ASSIGN_PUBLIC_IP:-ENABLED}}"
+            )
+          fi
+
           if ! aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEFINITION_ARN" \
             --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$RESOLVED_ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
+            "${NETWORK_ARGS[@]}" \
             --desired-count "${ECS_DESIRED_COUNT:-1}" \
             --force-new-deployment \
             2> update-service.err; then
