@@ -106,6 +106,10 @@ ECS_ALB_SECURITY_GROUP_ID=sg-...
 
 Use public subnets for `ECS_ALB_SUBNET_IDS`.
 
+The backend workflow also ensures the selected ECS container has a `portMappings` entry for `ECS_CONTAINER_PORT` and sets container environment variable `PORT` to the same value. This is required for ECS service load balancer attachment.
+
+After updating the ECS service, the workflow verifies that the active task definition and at least one running task use the exact ECR image pushed in the current run. If the service is still running an old/wrong image, the deploy fails and prints the expected image, active image, task definition, and running task images.
+
 ### Frontend workflow
 
 ```text

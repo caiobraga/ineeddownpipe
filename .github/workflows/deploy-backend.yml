@@ -89,6 +89,7 @@ jobs:
           docker build -t "$IMAGE_URI" .
           docker push "$IMAGE_URI"
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "EXPECTED_IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Fetch current ECS task definition
         run: |
@@ -128,6 +129,13 @@ jobs:
         env:
           IMAGE_URI: ${{ steps.image.outputs.image_uri }}
         run: |
+          CONTAINER_PORT="${ECS_CONTAINER_PORT:-3001}"
+          if ! [[ "$CONTAINER_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::ECS_CONTAINER_PORT must be a number, got '$CONTAINER_PORT'."
+            exit 1
+          fi
+          echo "ECS_CONTAINER_PORT=$CONTAINER_PORT" >> "$GITHUB_ENV"
+
           CONTAINER_NAME="$ECS_CONTAINER_NAME"
           if [[ "$CONTAINER_NAME" == arn:* || "$CONTAINER_NAME" == *"/"* ]]; then
             echo "::warning::ECS_CONTAINER_NAME looks like an ARN/path, not a container name. Ignoring it and auto-detecting."
@@ -148,6 +156,7 @@ jobs:
           jq \
             --arg IMAGE_URI "$IMAGE_URI" \
             --arg CONTAINER_NAME "$CONTAINER_NAME" \
+            --argjson CONTAINER_PORT "$CONTAINER_PORT" \
             'del(
               .taskDefinitionArn,
               .revision,
@@ -159,7 +168,21 @@ jobs:
             )
             | .containerDefinitions = (
               .containerDefinitions
-              | map(if .name == $CONTAINER_NAME then .image = $IMAGE_URI else . end)
+              | map(
+                  if .name == $CONTAINER_NAME then
+                    .image = $IMAGE_URI
+                    | .portMappings = (
+                        (.portMappings // [] | map(select(.containerPort != $CONTAINER_PORT)))
+                        + [{containerPort: $CONTAINER_PORT, hostPort: $CONTAINER_PORT, protocol: "tcp"}]
+                      )
+                    | .environment = (
+                        (.environment // [] | map(select(.name != "PORT")))
+                        + [{name: "PORT", value: ($CONTAINER_PORT | tostring)}]
+                      )
+                  else
+                    .
+                  end
+                )
             )' \
             task-definition.json > task-definition-rendered.json
 
@@ -170,6 +193,9 @@ jobs:
             jq -r '.containerDefinitions[].name' task-definition.json
             exit 1
           }
+
+          echo "Rendered container port mapping:"
+          jq --arg CONTAINER_NAME "$CONTAINER_NAME" '.containerDefinitions[] | select(.name == $CONTAINER_NAME) | {name, portMappings, environment: (.environment // [] | map(select(.name == "PORT")))}' task-definition-rendered.json
 
       - name: Ensure public ALB for ECS service
         run: |
@@ -325,3 +351,58 @@ jobs:
             --services "$ECS_SERVICE" \
             --query 'services[0].{status:status,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,taskDefinition:taskDefinition}' \
             --output table
+
+          ACTIVE_TASK_DEFINITION_ARN="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+
+          aws ecs describe-task-definition \
+            --task-definition "$ACTIVE_TASK_DEFINITION_ARN" \
+            --query taskDefinition \
+            > active-task-definition.json
+
+          ACTIVE_IMAGE_URI="$(jq -r --arg CONTAINER_NAME "$RESOLVED_ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .image' active-task-definition.json)"
+
+          echo "Expected image: $EXPECTED_IMAGE_URI"
+          echo "Active task definition: $ACTIVE_TASK_DEFINITION_ARN"
+          echo "Active image: $ACTIVE_IMAGE_URI"
+
+          if [ "$ACTIVE_IMAGE_URI" != "$EXPECTED_IMAGE_URI" ]; then
+            echo "::error::ECS service '$ECS_SERVICE' is not using the image pushed by this workflow."
+            echo "Container: $RESOLVED_ECS_CONTAINER_NAME"
+            echo "Expected:  $EXPECTED_IMAGE_URI"
+            echo "Actual:    $ACTIVE_IMAGE_URI"
+            echo "Available containers in active task definition:"
+            jq -r '.containerDefinitions[] | "\(.name) -> \(.image)"' active-task-definition.json
+            exit 1
+          fi
+
+          RUNNING_TASK_ARNS="$(aws ecs list-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --service-name "$ECS_SERVICE" \
+            --desired-status RUNNING \
+            --query 'taskArns' \
+            --output text)"
+
+          if [ -z "$RUNNING_TASK_ARNS" ] || [ "$RUNNING_TASK_ARNS" = "None" ]; then
+            echo "::error::No running ECS tasks found for service '$ECS_SERVICE' after deployment."
+            exit 1
+          fi
+
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks $RUNNING_TASK_ARNS \
+            --query 'tasks[].{taskArn:taskArn,lastStatus:lastStatus,taskDefinitionArn:taskDefinitionArn,containers:containers[].{name:name,image:image,lastStatus:lastStatus}}' \
+            --output json \
+            > running-tasks.json
+
+          echo "Running task images:"
+          jq -r '.[] | .taskArn as $task | .containers[] | "\($task) :: \(.name) :: \(.image) :: \(.lastStatus)"' running-tasks.json
+
+          MATCHING_RUNNING_COUNT="$(jq --arg CONTAINER_NAME "$RESOLVED_ECS_CONTAINER_NAME" --arg IMAGE_URI "$EXPECTED_IMAGE_URI" '[.[] | .containers[] | select(.name == $CONTAINER_NAME and .image == $IMAGE_URI)] | length' running-tasks.json)"
+          if [ "$MATCHING_RUNNING_COUNT" = "0" ]; then
+            echo "::error::No running ECS task is using expected image '$EXPECTED_IMAGE_URI' for container '$RESOLVED_ECS_CONTAINER_NAME'."
+            exit 1
+          fi
