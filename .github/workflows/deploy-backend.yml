@@ -262,11 +262,12 @@ jobs:
                 --output text)"
             fi
 
-            aws ec2 authorize-security-group-ingress \
-              --group-id "$ALB_SECURITY_GROUP_ID" \
-              --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTP from internet"}]' \
-              >/dev/null 2>&1 || true
           fi
+
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$ALB_SECURITY_GROUP_ID" \
+            --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTP from internet"}]' \
+            >/dev/null 2>&1 || true
 
           if [ -n "$SERVICE_SECURITY_GROUP" ]; then
             aws ec2 authorize-security-group-ingress \
