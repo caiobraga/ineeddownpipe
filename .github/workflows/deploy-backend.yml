@@ -30,6 +30,7 @@ env:
   ECS_ALB_SUBNET_IDS: ${{ vars.ECS_ALB_SUBNET_IDS }}
   ECS_ALB_SECURITY_GROUP_ID: ${{ vars.ECS_ALB_SECURITY_GROUP_ID }}
   ECS_VPC_ID: ${{ vars.ECS_VPC_ID }}
+  BACKEND_SUBMODULE_REF: ${{ vars.BACKEND_SUBMODULE_REF }}
 
 jobs:
   deploy:
@@ -45,6 +46,18 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.GH_SUBMODULE_TOKEN || github.token }}
+
+      - name: Use latest backend submodule ref
+        id: backend_ref
+        working-directory: .
+        run: |
+          REF="${BACKEND_SUBMODULE_REF:-main}"
+          git -C ineeddownpipe-back fetch origin "$REF" --depth=1
+          git -C ineeddownpipe-back checkout "origin/$REF"
+          BACKEND_SHA="$(git -C ineeddownpipe-back rev-parse HEAD)"
+          echo "backend_sha=$BACKEND_SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying backend submodule ref: $REF"
+          echo "Deploying backend commit: $BACKEND_SHA"
 
       - name: Validate required configuration
         run: |
@@ -83,7 +96,7 @@ jobs:
         id: image
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ steps.backend_ref.outputs.backend_sha }}
         run: |
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t "$IMAGE_URI" .

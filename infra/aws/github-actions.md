@@ -86,7 +86,10 @@ ECS_CLUSTER=your-ecs-cluster-name
 ECS_SERVICE=your-ecs-service-name
 ECS_DESIRED_COUNT=1
 ECS_CONTAINER_PORT=3001
+BACKEND_SUBMODULE_REF=main
 ```
+
+`BACKEND_SUBMODULE_REF` controls which branch/ref is fetched from `ineeddownpipe-back` before building the Docker image. This avoids deploying an old submodule pointer from the parent repository.
 
 `ECS_CONTAINER_NAME` is optional when the ECS task definition has only one container. Set it only if the task definition has multiple containers:
 
