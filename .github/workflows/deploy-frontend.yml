@@ -1,10 +1,13 @@
 name: Deploy frontend
+# Triggers on submodule gitlink updates (ineeddownpipe-front) and file changes under ineeddownpipe-front/
 
 on:
   push:
     branches:
       - main
     paths:
+      # Submodule updates only change the gitlink path (not files under **/)
+      - "ineeddownpipe-front"
       - "ineeddownpipe-front/**"
       - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
@@ -23,6 +26,7 @@ env:
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
   VITE_API_URL: ${{ vars.VITE_API_URL }}
   VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+  FRONTEND_SUBMODULE_REF: ${{ vars.FRONTEND_SUBMODULE_REF }}
 
 jobs:
   deploy:
@@ -38,6 +42,23 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.GH_SUBMODULE_TOKEN || github.token }}
+
+      - name: Use frontend submodule ref
+        id: frontend_ref
+        working-directory: .
+        run: |
+          REF="${FRONTEND_SUBMODULE_REF:-main}"
+          test -f ineeddownpipe-front/package.json || {
+            echo "ineeddownpipe-front submodule was not checked out."
+            echo "Set GitHub secret GH_SUBMODULE_TOKEN with read access to caiobraga/ineeddownpipe-front"
+            exit 1
+          }
+          git -C ineeddownpipe-front fetch origin "$REF" --depth=1
+          git -C ineeddownpipe-front checkout "origin/$REF"
+          FRONT_SHA="$(git -C ineeddownpipe-front rev-parse HEAD)"
+          echo "front_sha=$FRONT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying frontend submodule ref: $REF"
+          echo "Deploying frontend commit: $FRONT_SHA"
 
       - name: Validate required configuration
         run: |
@@ -72,6 +93,9 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_SITE_URL: ${{ env.VITE_SITE_URL }}
         run: npm run build
 
       - name: Configure AWS credentials with OIDC role
@@ -112,7 +136,13 @@ jobs:
             --content-type "application/xml" || true
 
       - name: Invalidate CloudFront
+        id: invalidation
         run: |
-          aws cloudfront create-invalidation \
+          OUT="$(aws cloudfront create-invalidation \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-            --paths "/*"
+            --paths "/*")"
+          echo "$OUT"
+          INVALIDATION_ID="$(echo "$OUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['Invalidation']['Id'])")"
+          echo "invalidation_id=$INVALIDATION_ID" >> "$GITHUB_OUTPUT"
+          echo "Deployed frontend commit ${{ steps.frontend_ref.outputs.front_sha }} to s3://$FRONTEND_S3_BUCKET"
+          echo "CloudFront invalidation: $INVALIDATION_ID"

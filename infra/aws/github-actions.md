@@ -146,6 +146,30 @@ VITE_SITE_URL=https://www.your-domain.com
 
 `CLOUDFRONT_DISTRIBUTION_ID` is required. The frontend workflow creates a `/*` invalidation after every successful S3 sync so CloudFront serves the newest build and SPA routing settings.
 
+Optional:
+
+```text
+FRONTEND_SUBMODULE_REF=main
+```
+
+If unset, the frontend workflow checks out `main` from `ineeddownpipe-front` after cloning submodules (same pattern as `BACKEND_SUBMODULE_REF`).
+
+### Submodule deploy checklist
+
+This parent repo uses git submodules. A push that only bumps `ineeddownpipe-front` or `ineeddownpipe-back` changes the **gitlink** path (for example `ineeddownpipe-front`), not files under `ineeddownpipe-front/**`. The workflows listen for both patterns so deploys actually run.
+
+Correct release order:
+
+1. Commit and push changes inside `ineeddownpipe-front` (or `ineeddownpipe-back`).
+2. In the parent repo: `git add ineeddownpipe-front && git commit && git push`.
+3. Confirm GitHub Actions ran **Deploy frontend** (green). Or run it manually: Actions → Deploy frontend → Run workflow.
+
+If Actions is skipped, the site stays on the old build even though you pushed the parent repo.
+
+If **Run workflow** fails on checkout, set `GH_SUBMODULE_TOKEN` (read access to the private submodule repos).
+
+After a successful deploy, hard-refresh the site (Ctrl+Shift+R) or wait ~1–2 minutes for CloudFront invalidation.
+
 ## 4. IAM Permissions
 
 Attach permissions like these to the GitHub Actions role. Scope resources down to your account, bucket, repository, cluster, and service before production.

@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - "ineeddownpipe-back"
       - "ineeddownpipe-back/**"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
