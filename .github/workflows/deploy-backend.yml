@@ -602,7 +602,7 @@ jobs:
           fi
 
       - name: Refresh catalog after deploy
-        if: ${{ secrets.REFRESH_SECRET != '' }}
+        if: env.REFRESH_SECRET != ''
         run: |
           set -euo pipefail
           REFRESH_URL="${BACKEND_PUBLIC_URL%/}/api/refresh"
