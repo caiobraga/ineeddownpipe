@@ -600,3 +600,21 @@ jobs:
             echo "::error::No running ECS task is using expected image '$EXPECTED_IMAGE_URI' for container '$RESOLVED_ECS_CONTAINER_NAME'."
             exit 1
           fi
+
+      - name: Refresh catalog after deploy
+        if: ${{ secrets.REFRESH_SECRET != '' }}
+        run: |
+          set -euo pipefail
+          REFRESH_URL="${BACKEND_PUBLIC_URL%/}/api/refresh"
+          echo "Triggering catalog refresh at $REFRESH_URL"
+          HTTP_CODE="$(curl -sS -o refresh-response.json -w "%{http_code}" \
+            -X POST "$REFRESH_URL" \
+            -H "Authorization: Bearer $REFRESH_SECRET" \
+            --max-time 600 || true)"
+          echo "Refresh HTTP status: $HTTP_CODE"
+          cat refresh-response.json || true
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning::Catalog refresh returned HTTP $HTTP_CODE. New scrapers may stay empty until the next successful refresh."
+          else
+            echo "Catalog refresh completed after deploy."
+          fi
