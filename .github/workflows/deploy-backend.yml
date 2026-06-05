@@ -40,7 +40,8 @@ env:
   AUTO_REFRESH_INTERVAL_HOURS: ${{ vars.AUTO_REFRESH_INTERVAL_HOURS }}
   REFRESH_MIN_HOURS: ${{ vars.REFRESH_MIN_HOURS }}
   SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  # Accept key in Secrets OR Variables (some repos store it as an encrypted variable)
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || vars.SUPABASE_SERVICE_ROLE_KEY }}
   JWT_SECRET: ${{ secrets.JWT_SECRET }}
   RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
   EMAIL_FROM: ${{ vars.EMAIL_FROM }}
@@ -92,10 +93,13 @@ jobs:
             echo "::warning::GitHub secret REFRESH_SECRET is not set. Public /api/refresh will remain disabled in production."
           fi
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::warning::SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY missing — sign-up and used listings will fail."
+            echo "::error::SUPABASE_URL (variable) and SUPABASE_SERVICE_ROLE_KEY (secret or variable) are required."
+            echo "Set SUPABASE_URL under Variables and SUPABASE_SERVICE_ROLE_KEY under Secrets or Variables, then re-run Deploy backend."
+            exit 1
           fi
           if [ -z "$JWT_SECRET" ]; then
-            echo "::warning::GitHub secret JWT_SECRET is not set — auth endpoints will return 503."
+            echo "::error::GitHub secret JWT_SECRET is required for auth."
+            exit 1
           fi
           if [ -z "$RESEND_API_KEY" ]; then
             echo "::warning::GitHub secret RESEND_API_KEY is not set — verification/reset emails will not send."
