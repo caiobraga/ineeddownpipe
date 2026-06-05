@@ -103,12 +103,16 @@ REFRESH_SECRET=your-refresh-secret
 
 Set `REFRESH_SECRET` as a GitHub secret. The backend workflow injects it into the ECS task definition so authenticated `POST /api/refresh` requests work in production.
 
-### Used listings (Supabase + Stripe)
+### Used listings (Postgres + JWT auth + Resend + Stripe)
 
-Backend **secrets** (Settings → Secrets and variables → Actions → Secrets):
+Same auth/email pattern as **ineedcarbonbuckets**: custom users in Postgres, JWT sessions, transactional email via **Resend** (not Supabase Auth).
+
+Backend **secrets**:
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
+JWT_SECRET=your-long-random-secret
+RESEND_API_KEY=re_...
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
@@ -117,20 +121,14 @@ Backend **variables**:
 
 ```text
 SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
+EMAIL_FROM=support@contact.ineeddownpipe.com
 SITE_URL=https://www.your-domain.com
 USED_LISTING_FEE_CENTS=1999
 ```
 
-`SITE_URL` must match the public frontend URL (Stripe Checkout success/cancel redirects).
+`SITE_URL` is used for Stripe redirects and email links (`/?verify-email=…`, `/?reset-password=…`).
 
-Frontend **variables** (same Supabase project):
-
-```text
-SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_...
-```
-
-The frontend workflow maps `SUPABASE_URL` → `VITE_SUPABASE_URL` at build time. The anon/publishable key is public in the browser bundle; keep the service role key backend-only.
+Run `supabase/used_listings.sql` then `supabase/app_users.sql` in the Supabase SQL editor.
 
 For local Stripe webhooks: `stripe listen --forward-to localhost:3003/api/stripe/webhook` and paste the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
 
@@ -171,8 +169,6 @@ FRONTEND_S3_BUCKET=your-static-site-bucket
 CLOUDFRONT_DISTRIBUTION_ID=E1234567890ABC
 VITE_API_URL=https://api.your-domain.com
 VITE_SITE_URL=https://www.your-domain.com
-SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_...
 ```
 
 `VITE_API_URL` must include the protocol (`http://` or `https://`). Without it, the built frontend requests `/api/...` from CloudFront and receives `index.html` instead of JSON.

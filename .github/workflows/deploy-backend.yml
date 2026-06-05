@@ -41,6 +41,9 @@ env:
   REFRESH_MIN_HOURS: ${{ vars.REFRESH_MIN_HOURS }}
   SUPABASE_URL: ${{ vars.SUPABASE_URL }}
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+  EMAIL_FROM: ${{ vars.EMAIL_FROM }}
   STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
   STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
   USED_LISTING_FEE_CENTS: ${{ vars.USED_LISTING_FEE_CENTS }}
@@ -193,6 +196,9 @@ jobs:
             --arg REFRESH_MIN_HOURS "$REFRESH_MIN_HOURS" \
             --arg SUPABASE_URL "$SUPABASE_URL" \
             --arg SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY" \
+            --arg JWT_SECRET "$JWT_SECRET" \
+            --arg RESEND_API_KEY "$RESEND_API_KEY" \
+            --arg EMAIL_FROM "$EMAIL_FROM" \
             --arg STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY" \
             --arg STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET" \
             --arg USED_LISTING_FEE_CENTS "$USED_LISTING_FEE_CENTS" \
@@ -228,6 +234,9 @@ jobs:
                           .name != "REFRESH_MIN_HOURS" and
                           .name != "SUPABASE_URL" and
                           .name != "SUPABASE_SERVICE_ROLE_KEY" and
+                          .name != "JWT_SECRET" and
+                          .name != "RESEND_API_KEY" and
+                          .name != "EMAIL_FROM" and
                           .name != "STRIPE_SECRET_KEY" and
                           .name != "STRIPE_WEBHOOK_SECRET" and
                           .name != "USED_LISTING_FEE_CENTS" and
@@ -241,6 +250,9 @@ jobs:
                         + optional_env("REFRESH_MIN_HOURS"; $REFRESH_MIN_HOURS)
                         + optional_env("SUPABASE_URL"; $SUPABASE_URL)
                         + optional_env("SUPABASE_SERVICE_ROLE_KEY"; $SUPABASE_SERVICE_ROLE_KEY)
+                        + optional_env("JWT_SECRET"; $JWT_SECRET)
+                        + optional_env("RESEND_API_KEY"; $RESEND_API_KEY)
+                        + optional_env("EMAIL_FROM"; $EMAIL_FROM)
                         + optional_env("STRIPE_SECRET_KEY"; $STRIPE_SECRET_KEY)
                         + optional_env("STRIPE_WEBHOOK_SECRET"; $STRIPE_WEBHOOK_SECRET)
                         + optional_env("USED_LISTING_FEE_CENTS"; $USED_LISTING_FEE_CENTS)

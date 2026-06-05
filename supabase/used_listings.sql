@@ -7,7 +7,7 @@ create extension if not exists pgcrypto;
 -- Tables
 create table if not exists public.used_listings (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_id uuid not null,
   status text not null default 'draft' check (status in ('draft','published','sold','archived')),
   title text not null,
   price_cents int not null check (price_cents >= 0),
@@ -29,7 +29,7 @@ create index if not exists used_listings_owner_idx on public.used_listings(owner
 create table if not exists public.listing_payments (
   id uuid primary key default gen_random_uuid(),
   listing_id uuid references public.used_listings(id) on delete set null,
-  owner_id uuid references auth.users(id) on delete set null,
+  owner_id uuid,
   stripe_checkout_session_id text unique,
   stripe_payment_intent_id text,
   amount_cents int,
@@ -100,6 +100,8 @@ for update
 to authenticated
 using (false)
 with check (false);
+
+-- After this file, run app_users.sql to create app_users and wire owner_id FKs.
 
 -- Storage (manual steps):
 -- 1) Create a storage bucket named: used-listings (public)
