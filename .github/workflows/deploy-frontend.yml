@@ -83,6 +83,8 @@ jobs:
               exit 1
               ;;
           esac
+          test -n "$VITE_SUPABASE_URL" || (echo "Missing repository variable SUPABASE_URL (used for VITE_SUPABASE_URL at build time)" && exit 1)
+          test -n "$VITE_SUPABASE_ANON_KEY" || (echo "Missing repository variable VITE_SUPABASE_ANON_KEY" && exit 1)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
