@@ -39,6 +39,12 @@ env:
   AUTO_REFRESH_STARTUP_DELAY_MS: ${{ vars.AUTO_REFRESH_STARTUP_DELAY_MS }}
   AUTO_REFRESH_INTERVAL_HOURS: ${{ vars.AUTO_REFRESH_INTERVAL_HOURS }}
   REFRESH_MIN_HOURS: ${{ vars.REFRESH_MIN_HOURS }}
+  SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+  STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+  USED_LISTING_FEE_CENTS: ${{ vars.USED_LISTING_FEE_CENTS }}
+  SITE_URL: ${{ vars.SITE_URL }}
 
 jobs:
   deploy:
@@ -185,6 +191,12 @@ jobs:
             --arg AUTO_REFRESH_STARTUP_DELAY_MS "$AUTO_REFRESH_STARTUP_DELAY_MS" \
             --arg AUTO_REFRESH_INTERVAL_HOURS "$AUTO_REFRESH_INTERVAL_HOURS" \
             --arg REFRESH_MIN_HOURS "$REFRESH_MIN_HOURS" \
+            --arg SUPABASE_URL "$SUPABASE_URL" \
+            --arg SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY" \
+            --arg STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY" \
+            --arg STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET" \
+            --arg USED_LISTING_FEE_CENTS "$USED_LISTING_FEE_CENTS" \
+            --arg SITE_URL "$SITE_URL" \
             --argjson CONTAINER_PORT "$CONTAINER_PORT" \
             'def optional_env($name; $value):
               if $value == "" then [] else [{name: $name, value: $value}] end;
@@ -213,7 +225,13 @@ jobs:
                           .name != "AUTO_REFRESH_ON_STARTUP" and
                           .name != "AUTO_REFRESH_STARTUP_DELAY_MS" and
                           .name != "AUTO_REFRESH_INTERVAL_HOURS" and
-                          .name != "REFRESH_MIN_HOURS"
+                          .name != "REFRESH_MIN_HOURS" and
+                          .name != "SUPABASE_URL" and
+                          .name != "SUPABASE_SERVICE_ROLE_KEY" and
+                          .name != "STRIPE_SECRET_KEY" and
+                          .name != "STRIPE_WEBHOOK_SECRET" and
+                          .name != "USED_LISTING_FEE_CENTS" and
+                          .name != "SITE_URL"
                         )))
                         + [{name: "PORT", value: ($CONTAINER_PORT | tostring)}]
                         + optional_env("REFRESH_SECRET"; $REFRESH_SECRET)
@@ -221,6 +239,12 @@ jobs:
                         + optional_env("AUTO_REFRESH_STARTUP_DELAY_MS"; $AUTO_REFRESH_STARTUP_DELAY_MS)
                         + optional_env("AUTO_REFRESH_INTERVAL_HOURS"; $AUTO_REFRESH_INTERVAL_HOURS)
                         + optional_env("REFRESH_MIN_HOURS"; $REFRESH_MIN_HOURS)
+                        + optional_env("SUPABASE_URL"; $SUPABASE_URL)
+                        + optional_env("SUPABASE_SERVICE_ROLE_KEY"; $SUPABASE_SERVICE_ROLE_KEY)
+                        + optional_env("STRIPE_SECRET_KEY"; $STRIPE_SECRET_KEY)
+                        + optional_env("STRIPE_WEBHOOK_SECRET"; $STRIPE_WEBHOOK_SECRET)
+                        + optional_env("USED_LISTING_FEE_CENTS"; $USED_LISTING_FEE_CENTS)
+                        + optional_env("SITE_URL"; $SITE_URL)
                       )
                   else
                     .

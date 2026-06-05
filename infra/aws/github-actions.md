@@ -103,7 +103,38 @@ REFRESH_SECRET=your-refresh-secret
 
 Set `REFRESH_SECRET` as a GitHub secret. The backend workflow injects it into the ECS task definition so authenticated `POST /api/refresh` requests work in production.
 
-Set the other values as GitHub repository variables if you want to override the defaults. `AUTO_REFRESH_ON_STARTUP=always` scrapes after every task start, and `false` disables startup scraping. Set `AUTO_REFRESH_INTERVAL_HOURS` to a positive number if you want the running service to refresh periodically. Without persistent storage, `/app/data` is ephemeral and the service will scrape again when ECS replaces the task.
+### Used listings (Supabase + Stripe)
+
+Backend **secrets** (Settings → Secrets and variables → Actions → Secrets):
+
+```text
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Backend **variables**:
+
+```text
+SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
+SITE_URL=https://www.your-domain.com
+USED_LISTING_FEE_CENTS=1999
+```
+
+`SITE_URL` must match the public frontend URL (Stripe Checkout success/cancel redirects).
+
+Frontend **variables** (same Supabase project):
+
+```text
+SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
+VITE_SUPABASE_ANON_KEY=sb_publishable_...
+```
+
+The frontend workflow maps `SUPABASE_URL` → `VITE_SUPABASE_URL` at build time. The anon/publishable key is public in the browser bundle; keep the service role key backend-only.
+
+For local Stripe webhooks: `stripe listen --forward-to localhost:3003/api/stripe/webhook` and paste the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
+
+Set the other refresh values as GitHub repository variables if you want to override the defaults. `AUTO_REFRESH_ON_STARTUP=always` scrapes after every task start, and `false` disables startup scraping. Set `AUTO_REFRESH_INTERVAL_HOURS` to a positive number if you want the running service to refresh periodically. Without persistent storage, `/app/data` is ephemeral and the service will scrape again when ECS replaces the task.
 
 `BACKEND_SUBMODULE_REF` controls which branch/ref is fetched from `ineeddownpipe-back` before building the Docker image. This avoids deploying an old submodule pointer from the parent repository.
 
@@ -140,6 +171,8 @@ FRONTEND_S3_BUCKET=your-static-site-bucket
 CLOUDFRONT_DISTRIBUTION_ID=E1234567890ABC
 VITE_API_URL=https://api.your-domain.com
 VITE_SITE_URL=https://www.your-domain.com
+SUPABASE_URL=https://txbmkfhjknqktiljpvkg.supabase.co
+VITE_SUPABASE_ANON_KEY=sb_publishable_...
 ```
 
 `VITE_API_URL` must include the protocol (`http://` or `https://`). Without it, the built frontend requests `/api/...` from CloudFront and receives `index.html` instead of JSON.

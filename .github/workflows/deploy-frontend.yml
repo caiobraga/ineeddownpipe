@@ -26,6 +26,8 @@ env:
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
   VITE_API_URL: ${{ vars.VITE_API_URL }}
   VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+  VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
   FRONTEND_SUBMODULE_REF: ${{ vars.FRONTEND_SUBMODULE_REF }}
 
 jobs:
@@ -96,6 +98,8 @@ jobs:
         env:
           VITE_API_URL: ${{ env.VITE_API_URL }}
           VITE_SITE_URL: ${{ env.VITE_SITE_URL }}
+          VITE_SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ env.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Configure AWS credentials with OIDC role
