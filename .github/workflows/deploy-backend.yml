@@ -91,6 +91,15 @@ jobs:
           if [ -z "$REFRESH_SECRET" ]; then
             echo "::warning::GitHub secret REFRESH_SECRET is not set. Public /api/refresh will remain disabled in production."
           fi
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY missing — sign-up and used listings will fail."
+          fi
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::warning::GitHub secret JWT_SECRET is not set — auth endpoints will return 503."
+          fi
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "::warning::GitHub secret RESEND_API_KEY is not set — verification/reset emails will not send."
+          fi
 
       - name: Configure AWS credentials with OIDC role
         if: ${{ env.AWS_ROLE_ARN != '' }}
